@@ -42,8 +42,8 @@ class ExtensionTest extends Tester\TestCase
 	{
 		$dic = $this->createContainer();
 
-		Assert::true($dic->getService('client.loop') instanceof React\EventLoop\LoopInterface::class);
-		Assert::true($dic->getService('client.configuration') instanceof WebSocketsWAMPClient\Client\Configuration::class);
+		Assert::true($dic->getService('client.loop') instanceof React\EventLoop\LoopInterface);
+		Assert::true($dic->getService('client.configuration') instanceof WebSocketsWAMPClient\Client\Configuration);
 		Assert::true($dic->getService('client.client') instanceof WebSocketsWAMPClient\Client\IClient);
 	}
 
