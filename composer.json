@@ -24,6 +24,23 @@
 			"configuration" : {
 				"extensions" : {
 					"wampClient" : "IPub\\WebSocketsWAMPClient\\DI\\WebSocketsWAMPClientExtension"
+				},
+				"wampClient": {
+					"server": {
+						"host" : "127.0.0.1",
+						"port" : 8080,
+						"path" : "/",
+						"origin" : null,
+						"dns" : {
+							"enable" : true,
+							"address" : "8.8.8.8"
+						},
+						"secured" : {
+							"enable" : false,
+							"sslSettings" : []
+						}
+					},
+					"loop":  null
 				}
 			}
 		}
@@ -37,7 +54,9 @@
 		"nette/di"		: "~2.4",
 		"nette/utils"	: "~2.4",
 
-		"react/stream"	: "^0.7.7"
+		"react/stream"	: "^0.7.7",
+
+		"kdyby/console"	: "~2.7"
 	},
 
 	"require-dev": {

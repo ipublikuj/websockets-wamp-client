@@ -25,6 +25,7 @@ use React\Stream;
 use IPub\WebSocketsWAMPClient\Exceptions;
 
 /**
+ * @method void onConnect()
  * @method void onOpen(array $data)
  * @method void onEvent(string $topic, string $event)
  */
@@ -36,8 +37,6 @@ class Client implements IClient
 	use Nette\SmartObject;
 
 	const VERSION = '0.1.0';
-
-	const TOKEN_LENGTH = 16;
 
 	const TYPE_ID_WELCOME = 0;
 	const TYPE_ID_PREFIX = 1;
@@ -52,6 +51,11 @@ class Client implements IClient
 	/**
 	 * @var \Closure
 	 */
+	public $onConnect = [];
+
+	/**
+	 * @var \Closure
+	 */
 	public $onOpen = [];
 
 	/**
@@ -60,34 +64,14 @@ class Client implements IClient
 	public $onEvent = [];
 
 	/**
-	 * @var string
-	 */
-	private $key;
-
-	/**
 	 * @var EventLoop\LoopInterface
 	 */
 	private $loop;
 
 	/**
-	 * @var string
+	 * @var Configuration
 	 */
-	private $host;
-
-	/**
-	 * @var int
-	 */
-	private $port;
-
-	/**
-	 * @var string
-	 */
-	private $origin;
-
-	/**
-	 * @var string
-	 */
-	private $path;
+	private $configuration;
 
 	/**
 	 * @var Stream\DuplexResourceStream
@@ -105,20 +89,13 @@ class Client implements IClient
 	private $callbacks = [];
 
 	/**
-	 * @param EventLoop\LoopInterface $eventLoop
-	 * @param string $host
-	 * @param int $port
-	 * @param string $path
-	 * @param string|NULL $origin
+	 * @param EventLoop\LoopInterface $loop
+	 * @param Configuration $configuration
 	 */
-	function __construct(EventLoop\LoopInterface $eventLoop, string $host = '127.0.0.1', int $port = 8080, string $path = '/', ?string $origin = NULL)
+	function __construct(EventLoop\LoopInterface $loop, Configuration $configuration)
 	{
-		$this->setLoop($eventLoop);
-		$this->setHost($host);
-		$this->setPort($port);
-		$this->setPath($path);
-		$this->setOrigin($origin);
-		$this->setKey($this->generateToken(self::TOKEN_LENGTH));
+		$this->loop = $loop;
+		$this->configuration = $configuration;
 	}
 
 	/**
@@ -150,7 +127,7 @@ class Client implements IClient
 	 */
 	public function connect() : void
 	{
-		$resource = @stream_socket_client('tcp://' . $this->getHost() . ':' . $this->getPort());
+		$resource = @stream_socket_client('tcp://' . $this->configuration->getHost() . ':' . $this->configuration->getPort());
 
 		if (!$resource) {
 			throw new Exceptions\ConnectionException('Opening socket failed.');
@@ -165,10 +142,13 @@ class Client implements IClient
 		});
 
 		$this->stream->on('close', function () : void {
-			echo '[CLOSED]' . PHP_EOL;
+			// When connection is closed, stop loop & end running script
+			$this->loop->stop();
 		});
 
 		$this->stream->write($this->createHeader());
+
+		$this->onConnect();
 	}
 
 	/**
@@ -233,15 +213,15 @@ class Client implements IClient
 	public function call(string $processUri, array $args, callable $callback = NULL) : void
 	{
 		$callId = $this->generateAlphaNumToken(16);
+
 		$this->callbacks[$callId] = $callback;
 
 		$data = [
 			self::TYPE_ID_CALL,
 			$callId,
 			$processUri,
+			$args,
 		];
-
-		$data = array_merge($data, $args);
 
 		$this->sendData($data);
 	}
@@ -309,16 +289,16 @@ class Client implements IClient
 	/**
 	 * Parse received data
 	 *
-	 * @param $response
+	 * @param array $response
 	 *
 	 * @return void
 	 *
 	 * @throws Utils\JsonException
 	 */
-	private function parseData($response) : void
+	private function parseData(array $response) : void
 	{
 		if (!$this->connected && isset($response['Sec-Websocket-Accept'])) {
-			if (base64_encode(pack('H*', sha1($this->key . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'))) === $response['Sec-Websocket-Accept']) {
+			if (base64_encode(pack('H*', sha1($this->configuration->getKey() . '258EAFA5-E914-47DA-95CA-C5AB0DC85B11'))) === $response['Sec-Websocket-Accept']) {
 				$this->connected = TRUE;
 			}
 		}
@@ -327,7 +307,10 @@ class Client implements IClient
 			$content = trim($response['content']);
 
 			if (preg_match('/(\[.*\])/', $content, $match)) {
-				$content = Utils\Json::decode($match[1], Utils\Json::FORCE_ARRAY);
+				// Fixing weird state when content is sometimes duplicated
+				$contentFields = explode(' ', preg_replace('/\x81\x1b+/', ' ', $match[1]));
+
+				$content = Utils\Json::decode($contentFields[0], Utils\Json::FORCE_ARRAY);
 
 				if (is_array($content)) {
 					unset($response['status']);
@@ -346,19 +329,19 @@ class Client implements IClient
 	 */
 	private function createHeader() : string
 	{
-		$host = $this->getHost();
+		$host = $this->configuration->getHost();
 
 		if ($host === '127.0.0.1' || $host === '0.0.0.0') {
 			$host = 'localhost';
 		}
 
-		$origin = $this->getOrigin() ? $this->getOrigin() : 'null';
+		$origin = $this->configuration->getOrigin() ? $this->configuration->getOrigin() : 'null';
 
 		return
-			"GET {$this->getPath()} HTTP/1.1" . "\r\n" .
+			"GET {$this->configuration->getPath()} HTTP/1.1" . "\r\n" .
 			"Origin: {$origin}" . "\r\n" .
-			"Host: {$host}:{$this->getPort()}" . "\r\n" .
-			"Sec-WebSocket-Key: {$this->getKey()}" . "\r\n" .
+			"Host: {$host}:{$this->configuration->getPort()}" . "\r\n" .
+			"Sec-WebSocket-Key: {$this->configuration->getKey()}" . "\r\n" .
 			"User-Agent: IPubWebSocketClient/" . self::VERSION . "\r\n" .
 			"Upgrade: websocket" . "\r\n" .
 			"Connection: Upgrade" . "\r\n" .
@@ -414,39 +397,11 @@ class Client implements IClient
 	 *
 	 * @return string
 	 */
-	private function generateToken(int $length) : string
-	{
-		$characters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"§$%&/()=[]{}';
-
-		$useChars = [];
-
-		// Select some random chars:
-		for ($i = 0; $i < $length; $i++) {
-			$useChars[] = $characters[mt_rand(0, strlen($characters) - 1)];
-		}
-
-		// Add numbers
-		array_push($useChars, rand(0, 9), rand(0, 9), rand(0, 9));
-		shuffle($useChars);
-
-		$randomString = trim(implode('', $useChars));
-		$randomString = substr($randomString, 0, self::TOKEN_LENGTH);
-
-		return base64_encode($randomString);
-	}
-
-	/**
-	 * Generate token
-	 *
-	 * @param int $length
-	 *
-	 * @return string
-	 */
 	private function generateAlphaNumToken(int $length) : string
 	{
 		$characters = str_split('abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789');
 
-		srand((float) microtime() * 1000000);
+		srand((int) microtime() * 1000000);
 
 		$token = '';
 
@@ -456,101 +411,6 @@ class Client implements IClient
 		} while (strlen($token) < $length);
 
 		return $token;
-	}
-
-	/**
-	 * @param int $port
-	 *
-	 * @return void
-	 */
-	public function setPort(int $port) : void
-	{
-		$this->port = $port;
-	}
-
-	/**
-	 * @return int
-	 */
-	public function getPort() : int
-	{
-		return $this->port;
-	}
-
-	/**
-	 * @param string $host
-	 *
-	 * @return void
-	 */
-	public function setHost(string $host) : void
-	{
-		$this->host = $host;
-	}
-
-	/**
-	 * @return string
-	 */
-	public function getHost() : string
-	{
-		return $this->host;
-	}
-
-	/**
-	 * @param string|NULL $origin
-	 *
-	 * @return void
-	 */
-	public function setOrigin(?string $origin = NULL) : void
-	{
-		if ($origin !== NULL) {
-			$this->origin = $origin;
-
-		} else {
-			$this->origin = NULL;
-		}
-	}
-
-	/**
-	 * @return string|NULL
-	 */
-	public function getOrigin() : ?string
-	{
-		return $this->origin;
-	}
-
-	/**
-	 * @param string $key
-	 *
-	 * @return void
-	 */
-	public function setKey(string $key) : void
-	{
-		$this->key = $key;
-	}
-
-	/**
-	 * @return string
-	 */
-	public function getKey() : string
-	{
-		return $this->key;
-	}
-
-	/**
-	 * @param string $path
-	 *
-	 * @return void
-	 */
-	public function setPath(string $path) : void
-	{
-		$this->path = $path;
-	}
-
-	/**
-	 * @return string
-	 */
-	public function getPath()
-	{
-		return $this->path;
 	}
 
 	/**

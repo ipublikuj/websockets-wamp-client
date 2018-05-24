@@ -7,7 +7,7 @@
 [![Composer Downloads](https://img.shields.io/packagist/dt/ipub/websockets-wamp-client.svg?style=flat-square)](https://packagist.org/packages/ipub/websockets-wamp-client)
 [![License](https://img.shields.io/packagist/l/ipub/websockets-wamp-client.svg?style=flat-square)](https://packagist.org/packages/ipub/websockets-wamp-client)
 
-Extension for creating [json:api](http://jsonapi.org) client for [Nette Framework](http://nette.org/)
+Extension for creating web sockets client using WAMP v1 protocol for [Nette Framework](http://nette.org/)
 
 ## Installation
 

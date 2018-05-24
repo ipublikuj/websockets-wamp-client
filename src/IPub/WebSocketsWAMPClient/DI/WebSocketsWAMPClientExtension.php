@@ -48,14 +48,15 @@ final class WebSocketsWAMPClientExtension extends DI\CompilerExtension
 	 */
 	private $defaults = [
 		'server' => [
-			'httpHost' => NULL,
-			'port'     => 8080,
-			'address'  => NULL,
-			'dns'      => [
+			'host'    => '127.0.0.1',
+			'port'    => 8080,
+			'path'    => '/',
+			'origin'  => NULL,
+			'dns'     => [
 				'enable'  => TRUE,
 				'address' => '8.8.8.8',
 			],
-			'secured'  => [
+			'secured' => [
 				'enable'      => FALSE,
 				'sslSettings' => [],
 			],
@@ -90,12 +91,19 @@ final class WebSocketsWAMPClientExtension extends DI\CompilerExtension
 				->setType(Logger\Console::class);
 		}
 
+		$builder->addDefinition($this->prefix('client.configuration'))
+			->setType(Client\Configuration::class)
+			->setArguments([
+				'host'   => (string) $configuration['server']['host'],
+				'port'   => (int) $configuration['server']['port'],
+				'path'   => (string) $configuration['server']['path'],
+				'origin' => $configuration['server']['origin'],
+			]);
+
 		$builder->addDefinition($this->prefix('client.client'))
 			->setType(Client\Client::class)
 			->setArguments([
-				'eventLoop' => $loop,
-				'host'      => '127.0.0.1',
-				'port'      => 8787
+				'loop' => $loop,
 			]);
 
 		// Define all console commands
