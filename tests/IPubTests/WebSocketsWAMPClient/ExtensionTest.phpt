@@ -42,8 +42,8 @@ class ExtensionTest extends Tester\TestCase
 	{
 		$dic = $this->createContainer();
 
-		Assert::true($dic->getService('client.configuration') instanceof WebSocketsWAMPClient\Client\Configuration);
-		Assert::true($dic->getService('client.client') instanceof WebSocketsWAMPClient\Client\IClient);
+		Assert::true($dic->getService('wampClient.client.configuration') instanceof WebSocketsWAMPClient\Client\Configuration);
+		Assert::true($dic->getService('wampClient.client.client') instanceof WebSocketsWAMPClient\Client\IClient);
 	}
 
 	/**
