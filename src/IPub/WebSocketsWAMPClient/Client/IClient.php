@@ -70,11 +70,12 @@ interface IClient
 	/**
 	 * @param string $processUri
 	 * @param array $args
-	 * @param callable $callback
+	 * @param callable $successCallback
+	 * @param callable $errorCallback
 	 *
 	 * @return void
 	 */
-	public function call(string $processUri, array $args, callable $callback = NULL) : void;
+	public function call(string $processUri, array $args, callable $successCallback = NULL, callable $errorCallback = NULL) : void;
 
 	/**
 	 * @param EventLoop\LoopInterface $loop

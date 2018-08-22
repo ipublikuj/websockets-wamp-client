@@ -23,6 +23,7 @@ use React\EventLoop;
 use React\Stream;
 
 use IPub\WebSocketsWAMPClient\Exceptions;
+use Tracy\Debugger;
 
 /**
  * @method void onConnect()
@@ -42,7 +43,7 @@ class Client implements IClient
 	const TYPE_ID_PREFIX = 1;
 	const TYPE_ID_CALL = 2;
 	const TYPE_ID_CALL_RESULT = 3;
-	const TYPE_ID_ERROR = 4;
+	const TYPE_ID_CALL_ERROR = 4;
 	const TYPE_ID_SUBSCRIBE = 5;
 	const TYPE_ID_UNSUBSCRIBE = 6;
 	const TYPE_ID_PUBLISH = 7;
@@ -84,9 +85,14 @@ class Client implements IClient
 	private $connected = FALSE;
 
 	/**
-	 * @var array
+	 * @var callable[]
 	 */
-	private $callbacks = [];
+	private $sucessCallbacks = [];
+
+	/**
+	 * @var callable[]
+	 */
+	private $errorCallbacks = [];
 
 	/**
 	 * @param EventLoop\LoopInterface $loop
@@ -210,11 +216,12 @@ class Client implements IClient
 	/**
 	 * {@inheritdoc}
 	 */
-	public function call(string $processUri, array $args, callable $callback = NULL) : void
+	public function call(string $processUri, array $args, callable $successCallback = NULL, callable $errorCallback = NULL) : void
 	{
 		$callId = $this->generateAlphaNumToken(16);
 
-		$this->callbacks[$callId] = $callback;
+		$this->sucessCallbacks[$callId] = $successCallback;
+		$this->errorCallbacks[$callId] = $errorCallback;
 
 		$data = [
 			self::TYPE_ID_CALL,
@@ -250,9 +257,35 @@ class Client implements IClient
 					if (isset($data[1])) {
 						$id = $data[1];
 
-						if (isset($this->callbacks[$id])) {
-							$callback = $this->callbacks[$id];
-							$callback((isset($data[2]) ? $data[2] : []));
+						if (isset($this->sucessCallbacks[$id])) {
+							$callback = $this->sucessCallbacks[$id];
+							$callback(
+								Utils\ArrayHash::from(isset($data[2]) ? (is_array($data[2]) ? $data[2] : [$data[2]]) : [])
+							);
+
+							unset($this->sucessCallbacks[$id]);
+						}
+					}
+					break;
+
+				case self::TYPE_ID_CALL_ERROR:
+					if (isset($data[1])) {
+						$id = $data[1];
+
+						if (isset($this->errorCallbacks[$id])) {
+							$callback = $this->errorCallbacks[$id];
+							$callback(
+								// Topic
+								(isset($data[2]) ? (string) $data[2] : NULL),
+
+								// Error exception message
+								(isset($data[3]) ? (string) $data[3] : NULL),
+
+								// Additional error data
+								Utils\ArrayHash::from(isset($data[4]) ? (is_array($data[4]) ? $data[4] : [$data[4]]) : [])
+							);
+
+							unset($this->errorCallbacks[$id]);
 						}
 					}
 					break;
@@ -304,19 +337,25 @@ class Client implements IClient
 		}
 
 		if ($this->connected && !empty($response['content'])) {
-			$content = trim($response['content']);
+			$content = str_replace("\r\n", '', trim($response['content']));
 
-			if (preg_match('/(\[.*\])/', $content, $match)) {
-				// Fixing weird state when content is sometimes duplicated
-				$contentFields = explode(' ', preg_replace('/\x81\x1b+/', ' ', $match[1]));
+			if (preg_match('/(\[[^\]]+\])/', $content, $match)) {
+				try {
+					$parsedContent = Utils\Json::decode($match[1], Utils\Json::FORCE_ARRAY);
 
-				$content = Utils\Json::decode($contentFields[0], Utils\Json::FORCE_ARRAY);
+				} catch (Utils\JsonException $ex) {
+					Debugger::log($ex);
+					Debugger::log(trim($response['content']));
+					Debugger::log($content);
 
-				if (is_array($content)) {
+					$parsedContent = NULL;
+				}
+
+				if (is_array($parsedContent)) {
 					unset($response['status']);
 					unset($response['content']);
 
-					$this->receiveData($content, $response);
+					$this->receiveData($parsedContent, $response);
 				}
 			}
 		}
@@ -363,6 +402,8 @@ class Client implements IClient
 		$content = '';
 
 		$fields = explode("\r\n", preg_replace('/\x0D\x0A[\x09\x20]+/', ' ', $header));
+		Debugger::log($header, 'response');
+		Debugger::log($fields, 'response');
 
 		foreach ($fields as $field) {
 			if (preg_match('/([^:]+): (.+)/m', $field, $match)) {
