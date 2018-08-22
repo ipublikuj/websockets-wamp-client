@@ -23,7 +23,6 @@ use React\EventLoop;
 use React\Stream;
 
 use IPub\WebSocketsWAMPClient\Exceptions;
-use Tracy\Debugger;
 
 /**
  * @method void onConnect()
@@ -344,10 +343,6 @@ class Client implements IClient
 					$parsedContent = Utils\Json::decode($match[1], Utils\Json::FORCE_ARRAY);
 
 				} catch (Utils\JsonException $ex) {
-					Debugger::log($ex);
-					Debugger::log(trim($response['content']));
-					Debugger::log($content);
-
 					$parsedContent = NULL;
 				}
 
@@ -402,8 +397,6 @@ class Client implements IClient
 		$content = '';
 
 		$fields = explode("\r\n", preg_replace('/\x0D\x0A[\x09\x20]+/', ' ', $header));
-		Debugger::log($header, 'response');
-		Debugger::log($fields, 'response');
 
 		foreach ($fields as $field) {
 			if (preg_match('/([^:]+): (.+)/m', $field, $match)) {
