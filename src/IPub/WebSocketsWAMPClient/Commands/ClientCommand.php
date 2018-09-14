@@ -24,6 +24,7 @@ use Symfony\Component\Console\Output;
 use Psr\Log;
 
 use IPub\WebSocketsWAMPClient\Client;
+use IPub\WebSocketsWAMPClient\Exceptions;
 use IPub\WebSocketsWAMPClient\Logger;
 
 /**
@@ -91,7 +92,12 @@ class ClientCommand extends Console\Command\Command
 			$this->logger->setFormatter(new Logger\Formatter\Symfony($io));
 		}
 
-		$this->client->connect();
+		try {
+			$this->client->connect();
+
+		} catch (Exceptions\ConnectionException $ex) {
+			$this->client->getLoop()->stop();
+		}
 
 		$this->client->getLoop()->run();
 	}
